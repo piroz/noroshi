@@ -70,3 +70,11 @@ export async function clearEventLogs(): Promise<void> {
 export async function getNetworkInterfaces(): Promise<NetworkInterface[]> {
   return invoke("get_network_interfaces");
 }
+
+export async function exportConfig(): Promise<string> {
+  return invoke("export_config");
+}
+
+export async function importConfig(json: string): Promise<ServiceView[]> {
+  return invoke("import_config", { json });
+}

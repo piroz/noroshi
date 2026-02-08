@@ -125,6 +125,17 @@ export function useServices() {
     }
   }, []);
 
+  const importConfig = useCallback(async (json: string) => {
+    try {
+      const result = await commands.importConfig(json);
+      setServices(result);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+      throw e;
+    }
+  }, []);
+
   return {
     services,
     loading,
@@ -135,5 +146,6 @@ export function useServices() {
     toggleService,
     startAll,
     stopAll,
+    importConfig,
   };
 }

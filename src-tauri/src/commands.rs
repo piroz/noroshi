@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::logging;
 use crate::mdns;
 use crate::models::{
-    LogEntry, LogLevel, NetworkInterface, ServiceConfig, ServiceStatus, ServiceView,
+    AppConfig, LogEntry, LogLevel, NetworkInterface, ServiceConfig, ServiceStatus, ServiceView,
 };
 use crate::network;
 use crate::state::AppState;
@@ -466,4 +466,93 @@ pub fn clear_event_logs(state: State<'_, AppState>) {
 #[tauri::command]
 pub fn get_network_interfaces() -> Vec<NetworkInterface> {
     network::get_interfaces()
+}
+
+#[tauri::command]
+pub fn export_config(state: State<'_, AppState>) -> Result<String, AppError> {
+    let config = state.config.lock().unwrap();
+    serde_json::to_string_pretty(&*config).map_err(|e| AppError::Config(e.to_string()))
+}
+
+#[tauri::command]
+pub fn import_config(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    json: String,
+) -> Result<Vec<ServiceView>, AppError> {
+    let mut imported: AppConfig =
+        serde_json::from_str(&json).map_err(|e| AppError::Config(format!("Invalid JSON: {}", e)))?;
+
+    // Assign new UUIDs to avoid collisions
+    for svc in imported.services.iter_mut() {
+        svc.id = Uuid::new_v4().to_string();
+    }
+
+    // Stop all existing running services
+    {
+        let config = state.config.lock().unwrap();
+        let daemon = state.daemon.lock().unwrap();
+        let mut statuses = state.statuses.lock().unwrap();
+        for svc in &config.services {
+            if statuses.get(&svc.id).copied() == Some(ServiceStatus::Running) {
+                let _ = mdns::unregister_service(&daemon, svc, &config.hostname);
+            }
+        }
+        statuses.clear();
+    }
+
+    // Preserve current hostname (not from imported config)
+    let hostname = {
+        let config = state.config.lock().unwrap();
+        config.hostname.clone()
+    };
+    imported.hostname = hostname.clone();
+
+    // Replace config and save
+    {
+        let mut config = state.config.lock().unwrap();
+        *config = imported.clone();
+        save_config(&config)?;
+    }
+
+    // Start enabled services
+    {
+        let daemon = state.daemon.lock().unwrap();
+        let mut statuses = state.statuses.lock().unwrap();
+        for svc in &imported.services {
+            if svc.enabled {
+                match mdns::register_service(&daemon, svc, &hostname) {
+                    Ok(()) => {
+                        statuses.insert(svc.id.clone(), ServiceStatus::Running);
+                    }
+                    Err(e) => {
+                        statuses.insert(svc.id.clone(), ServiceStatus::Error);
+                        logging::append_log(
+                            &app,
+                            &state,
+                            LogLevel::Error,
+                            format!("Failed to start imported service '{}': {}", svc.name, e),
+                            Some(svc.id.clone()),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    logging::append_log(
+        &app,
+        &state,
+        LogLevel::Info,
+        format!(
+            "Configuration imported ({} service{})",
+            imported.services.len(),
+            if imported.services.len() == 1 { "" } else { "s" }
+        ),
+        None,
+    );
+
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }

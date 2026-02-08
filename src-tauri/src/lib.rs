@@ -80,6 +80,8 @@ pub fn run() {
             get_event_logs,
             clear_event_logs,
             get_network_interfaces,
+            export_config,
+            import_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

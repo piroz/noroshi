@@ -4,6 +4,7 @@ import { ServiceTable } from "./components/ServiceTable";
 import { ServiceFormDialog } from "./components/ServiceFormDialog";
 import { BulkActions } from "./components/BulkActions";
 import { MonitoringView } from "./components/MonitoringView";
+import { SettingsView } from "./components/SettingsView";
 import { useServices } from "./hooks/useServices";
 import type { ServiceView } from "./types";
 
@@ -18,6 +19,7 @@ function App() {
     toggleService,
     startAll,
     stopAll,
+    importConfig,
   } = useServices();
 
   const [activeTab, setActiveTab] = useState<Tab>("services");
@@ -110,6 +112,8 @@ function App() {
       )}
 
       {activeTab === "monitor" && <MonitoringView services={services} />}
+
+      {activeTab === "settings" && <SettingsView onImport={importConfig} />}
     </Layout>
   );
 }
