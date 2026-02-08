@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ServiceView } from "../types";
 import { TxtRecordEditor } from "./TxtRecordEditor";
 
@@ -15,23 +15,15 @@ interface Props {
 }
 
 export function ServiceFormDialog({ service, onSave, onCancel }: Props) {
-  const [name, setName] = useState("");
-  const [serviceType, setServiceType] = useState("_http._tcp");
-  const [port, setPort] = useState(8080);
-  const [txt, setTxt] = useState<Record<string, string>>({});
-  const [enabled, setEnabled] = useState(true);
+  const [name, setName] = useState(service?.name ?? "");
+  const [serviceType, setServiceType] = useState(service?.type ?? "_http._tcp");
+  const [port, setPort] = useState(service?.port ?? 8080);
+  const [txt, setTxt] = useState<Record<string, string>>(
+    service ? { ...service.txt } : {},
+  );
+  const [enabled, setEnabled] = useState(service?.enabled ?? true);
 
   const isEdit = service !== null;
-
-  useEffect(() => {
-    if (service) {
-      setName(service.name);
-      setServiceType(service.type);
-      setPort(service.port);
-      setTxt({ ...service.txt });
-      setEnabled(service.enabled);
-    }
-  }, [service]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

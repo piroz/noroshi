@@ -4,7 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 fn config_dir() -> Result<PathBuf, AppError> {
-    let home = dirs::home_dir().ok_or_else(|| AppError::Config("Cannot find home directory".into()))?;
+    let home =
+        dirs::home_dir().ok_or_else(|| AppError::Config("Cannot find home directory".into()))?;
     Ok(home.join(".mdns-manager"))
 }
 

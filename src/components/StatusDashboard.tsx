@@ -30,10 +30,7 @@ export function StatusDashboard({ services }: Props) {
   return (
     <div className="grid grid-cols-3 gap-4">
       {cards.map((card) => (
-        <div
-          key={card.label}
-          className={`rounded-lg border p-4 ${card.color}`}
-        >
+        <div key={card.label} className={`rounded-lg border p-4 ${card.color}`}>
           <div className="text-2xl font-bold">{card.count}</div>
           <div className="text-sm font-medium">{card.label}</div>
         </div>

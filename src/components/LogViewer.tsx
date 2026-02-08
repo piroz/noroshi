@@ -100,9 +100,7 @@ export function LogViewer({
                       {entry.level}
                     </span>
                   </td>
-                  <td
-                    className={`px-2 py-1 ${LEVEL_COLORS[entry.level]}`}
-                  >
+                  <td className={`px-2 py-1 ${LEVEL_COLORS[entry.level]}`}>
                     {entry.message}
                   </td>
                 </tr>
