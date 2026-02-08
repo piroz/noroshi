@@ -1,0 +1,328 @@
+use crate::config::save_config;
+use crate::error::AppError;
+use crate::mdns;
+use crate::models::{ServiceConfig, ServiceStatus, ServiceView};
+use crate::state::AppState;
+use std::collections::HashMap;
+use tauri::State;
+use uuid::Uuid;
+
+fn build_views(state: &AppState) -> Result<Vec<ServiceView>, AppError> {
+    let config = state.config.lock().unwrap();
+    let statuses = state.statuses.lock().unwrap();
+    Ok(config
+        .services
+        .iter()
+        .map(|svc| {
+            let status = statuses
+                .get(&svc.id)
+                .copied()
+                .unwrap_or(ServiceStatus::Stopped);
+            ServiceView::from_config(svc, status)
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_services(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn add_service(
+    state: State<'_, AppState>,
+    name: String,
+    service_type: String,
+    port: u16,
+    txt: HashMap<String, String>,
+    enabled: bool,
+) -> Result<Vec<ServiceView>, AppError> {
+    let id = Uuid::new_v4().to_string();
+    let svc = ServiceConfig {
+        id: id.clone(),
+        name,
+        service_type,
+        port,
+        txt,
+        enabled,
+    };
+
+    {
+        let mut config = state.config.lock().unwrap();
+        config.services.push(svc.clone());
+        save_config(&config)?;
+    }
+
+    if enabled {
+        let config = state.config.lock().unwrap();
+        let daemon = state.daemon.lock().unwrap();
+        let mut statuses = state.statuses.lock().unwrap();
+        match mdns::register_service(&daemon, &svc, &config.hostname) {
+            Ok(()) => {
+                statuses.insert(id, ServiceStatus::Running);
+            }
+            Err(e) => {
+                statuses.insert(id, ServiceStatus::Error);
+                eprintln!("Failed to register service: {}", e);
+            }
+        }
+    }
+
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn update_service(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    service_type: String,
+    port: u16,
+    txt: HashMap<String, String>,
+    enabled: bool,
+) -> Result<Vec<ServiceView>, AppError> {
+    let was_running;
+    let old_config;
+
+    {
+        let config = state.config.lock().unwrap();
+        let statuses = state.statuses.lock().unwrap();
+        let svc = config
+            .services
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| AppError::NotFound(id.clone()))?;
+        was_running = statuses.get(&id).copied() == Some(ServiceStatus::Running);
+        old_config = svc.clone();
+    }
+
+    // Unregister old if running
+    if was_running {
+        let config = state.config.lock().unwrap();
+        let daemon = state.daemon.lock().unwrap();
+        let _ = mdns::unregister_service(&daemon, &old_config, &config.hostname);
+        let mut statuses = state.statuses.lock().unwrap();
+        statuses.insert(id.clone(), ServiceStatus::Stopped);
+    }
+
+    let new_svc = ServiceConfig {
+        id: id.clone(),
+        name,
+        service_type,
+        port,
+        txt,
+        enabled,
+    };
+
+    {
+        let mut config = state.config.lock().unwrap();
+        if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
+            *svc = new_svc.clone();
+        }
+        save_config(&config)?;
+    }
+
+    // Re-register if should be enabled
+    if enabled {
+        let config = state.config.lock().unwrap();
+        let daemon = state.daemon.lock().unwrap();
+        let mut statuses = state.statuses.lock().unwrap();
+        match mdns::register_service(&daemon, &new_svc, &config.hostname) {
+            Ok(()) => {
+                statuses.insert(id, ServiceStatus::Running);
+            }
+            Err(e) => {
+                statuses.insert(id, ServiceStatus::Error);
+                eprintln!("Failed to register service: {}", e);
+            }
+        }
+    }
+
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn delete_service(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<ServiceView>, AppError> {
+    let svc_config;
+    {
+        let config = state.config.lock().unwrap();
+        svc_config = config
+            .services
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| AppError::NotFound(id.clone()))?
+            .clone();
+    }
+
+    // Unregister if running
+    {
+        let statuses = state.statuses.lock().unwrap();
+        if statuses.get(&id).copied() == Some(ServiceStatus::Running) {
+            drop(statuses);
+            let config = state.config.lock().unwrap();
+            let daemon = state.daemon.lock().unwrap();
+            let _ = mdns::unregister_service(&daemon, &svc_config, &config.hostname);
+        }
+    }
+
+    {
+        let mut config = state.config.lock().unwrap();
+        config.services.retain(|s| s.id != id);
+        save_config(&config)?;
+    }
+
+    {
+        let mut statuses = state.statuses.lock().unwrap();
+        statuses.remove(&id);
+    }
+
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn toggle_service(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<ServiceView>, AppError> {
+    let svc_config;
+    let currently_running;
+
+    {
+        let config = state.config.lock().unwrap();
+        let statuses = state.statuses.lock().unwrap();
+        svc_config = config
+            .services
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| AppError::NotFound(id.clone()))?
+            .clone();
+        currently_running = statuses.get(&id).copied() == Some(ServiceStatus::Running);
+    }
+
+    if currently_running {
+        // Stop
+        {
+            let config = state.config.lock().unwrap();
+            let daemon = state.daemon.lock().unwrap();
+            let _ = mdns::unregister_service(&daemon, &svc_config, &config.hostname);
+        }
+        {
+            let mut statuses = state.statuses.lock().unwrap();
+            statuses.insert(id.clone(), ServiceStatus::Stopped);
+        }
+        {
+            let mut config = state.config.lock().unwrap();
+            if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
+                svc.enabled = false;
+            }
+            save_config(&config)?;
+        }
+    } else {
+        // Start
+        {
+            let config = state.config.lock().unwrap();
+            let daemon = state.daemon.lock().unwrap();
+            let mut statuses = state.statuses.lock().unwrap();
+            match mdns::register_service(&daemon, &svc_config, &config.hostname) {
+                Ok(()) => {
+                    statuses.insert(id.clone(), ServiceStatus::Running);
+                }
+                Err(e) => {
+                    statuses.insert(id.clone(), ServiceStatus::Error);
+                    eprintln!("Failed to register service: {}", e);
+                }
+            }
+        }
+        {
+            let mut config = state.config.lock().unwrap();
+            if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
+                svc.enabled = true;
+            }
+            save_config(&config)?;
+        }
+    }
+
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn start_all(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
+    let services: Vec<ServiceConfig>;
+    let hostname: String;
+
+    {
+        let config = state.config.lock().unwrap();
+        services = config.services.clone();
+        hostname = config.hostname.clone();
+    }
+
+    {
+        let daemon = state.daemon.lock().unwrap();
+        let mut statuses = state.statuses.lock().unwrap();
+        for svc in &services {
+            if statuses.get(&svc.id).copied() != Some(ServiceStatus::Running) {
+                match mdns::register_service(&daemon, svc, &hostname) {
+                    Ok(()) => {
+                        statuses.insert(svc.id.clone(), ServiceStatus::Running);
+                    }
+                    Err(e) => {
+                        statuses.insert(svc.id.clone(), ServiceStatus::Error);
+                        eprintln!("Failed to register service {}: {}", svc.name, e);
+                    }
+                }
+            }
+        }
+    }
+
+    {
+        let mut config = state.config.lock().unwrap();
+        for svc in config.services.iter_mut() {
+            svc.enabled = true;
+        }
+        save_config(&config)?;
+    }
+
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn stop_all(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
+    let services: Vec<ServiceConfig>;
+    let hostname: String;
+
+    {
+        let config = state.config.lock().unwrap();
+        services = config.services.clone();
+        hostname = config.hostname.clone();
+    }
+
+    {
+        let daemon = state.daemon.lock().unwrap();
+        let mut statuses = state.statuses.lock().unwrap();
+        for svc in &services {
+            if statuses.get(&svc.id).copied() == Some(ServiceStatus::Running) {
+                let _ = mdns::unregister_service(&daemon, svc, &hostname);
+                statuses.insert(svc.id.clone(), ServiceStatus::Stopped);
+            }
+        }
+    }
+
+    {
+        let mut config = state.config.lock().unwrap();
+        for svc in config.services.iter_mut() {
+            svc.enabled = false;
+        }
+        save_config(&config)?;
+    }
+
+    build_views(&state)
+}
+
+#[tauri::command]
+pub fn get_host_name(state: State<'_, AppState>) -> String {
+    let config = state.config.lock().unwrap();
+    config.hostname.clone()
+}
