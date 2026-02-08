@@ -19,3 +19,17 @@ export interface AddServiceParams {
 export interface UpdateServiceParams extends AddServiceParams {
   id: string;
 }
+
+export type LogLevel = "info" | "warn" | "error";
+
+export interface LogEntry {
+  timestamp: string;
+  level: LogLevel;
+  message: string;
+  service_id?: string;
+}
+
+export interface NetworkInterface {
+  name: string;
+  addresses: string[];
+}

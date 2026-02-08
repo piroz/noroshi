@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { ServiceView } from "../types";
 import * as commands from "../lib/commands";
 
@@ -22,6 +23,15 @@ export function useServices() {
   useEffect(() => {
     fetchServices();
   }, [fetchServices]);
+
+  useEffect(() => {
+    const unlisten = listen<ServiceView[]>("services-changed", (event) => {
+      setServices(event.payload);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   const addService = useCallback(
     async (

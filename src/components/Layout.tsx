@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { getHostName } from "../lib/commands";
 
+export type Tab = "services" | "monitor";
+
 interface Props {
+  activeTab: Tab;
+  onTabChange: (tab: Tab) => void;
   children: React.ReactNode;
 }
 
-export function Layout({ children }: Props) {
+export function Layout({ activeTab, onTabChange, children }: Props) {
   const [hostname, setHostname] = useState("");
 
   useEffect(() => {
@@ -23,6 +27,28 @@ export function Layout({ children }: Props) {
             </span>
           )}
         </div>
+        <nav className="mt-3 flex gap-1">
+          <button
+            onClick={() => onTabChange("services")}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              activeTab === "services"
+                ? "bg-gray-900 text-white"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            }`}
+          >
+            Services
+          </button>
+          <button
+            onClick={() => onTabChange("monitor")}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              activeTab === "monitor"
+                ? "bg-gray-900 text-white"
+                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            }`}
+          >
+            Monitor
+          </button>
+        </nav>
       </header>
       <main className="mx-auto max-w-5xl p-6">{children}</main>
     </div>

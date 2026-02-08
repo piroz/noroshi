@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ServiceView } from "../types";
+import type { LogEntry, NetworkInterface, ServiceView } from "../types";
 
 export async function getServices(): Promise<ServiceView[]> {
   return invoke("get_services");
@@ -57,4 +57,16 @@ export async function stopAll(): Promise<ServiceView[]> {
 
 export async function getHostName(): Promise<string> {
   return invoke("get_host_name");
+}
+
+export async function getEventLogs(): Promise<LogEntry[]> {
+  return invoke("get_event_logs");
+}
+
+export async function clearEventLogs(): Promise<void> {
+  return invoke("clear_event_logs");
+}
+
+export async function getNetworkInterfaces(): Promise<NetworkInterface[]> {
+  return invoke("get_network_interfaces");
 }

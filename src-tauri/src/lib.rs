@@ -1,15 +1,18 @@
 mod commands;
 mod config;
 mod error;
+mod logging;
 mod mdns;
 mod models;
+mod network;
 mod state;
 
 use commands::*;
-use models::ServiceStatus;
+use models::{LogLevel, ServiceStatus};
 use state::AppState;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,11 +40,34 @@ pub fn run() {
         config: Mutex::new(cfg),
         daemon: Mutex::new(daemon),
         statuses: Mutex::new(statuses),
+        logs: Mutex::new(VecDeque::new()),
     };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)
+        .setup(|app| {
+            let state = app.state::<AppState>();
+            let enabled_count = {
+                let statuses = state.statuses.lock().unwrap();
+                statuses
+                    .values()
+                    .filter(|s| **s == ServiceStatus::Running)
+                    .count()
+            };
+            logging::append_log(
+                app.handle(),
+                &state,
+                LogLevel::Info,
+                format!(
+                    "Application started ({} service{} auto-started)",
+                    enabled_count,
+                    if enabled_count == 1 { "" } else { "s" }
+                ),
+                None,
+            );
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_services,
             add_service,
@@ -51,6 +77,9 @@ pub fn run() {
             start_all,
             stop_all,
             get_host_name,
+            get_event_logs,
+            clear_event_logs,
+            get_network_interfaces,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

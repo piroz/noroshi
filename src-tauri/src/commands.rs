@@ -1,10 +1,12 @@
 use crate::config::save_config;
 use crate::error::AppError;
+use crate::logging;
 use crate::mdns;
-use crate::models::{ServiceConfig, ServiceStatus, ServiceView};
+use crate::models::{LogEntry, LogLevel, NetworkInterface, ServiceConfig, ServiceStatus, ServiceView};
+use crate::network;
 use crate::state::AppState;
 use std::collections::HashMap;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 fn build_views(state: &AppState) -> Result<Vec<ServiceView>, AppError> {
@@ -30,6 +32,7 @@ pub fn get_services(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppE
 
 #[tauri::command]
 pub fn add_service(
+    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     service_type: String,
@@ -40,7 +43,7 @@ pub fn add_service(
     let id = Uuid::new_v4().to_string();
     let svc = ServiceConfig {
         id: id.clone(),
-        name,
+        name: name.clone(),
         service_type,
         port,
         txt,
@@ -53,26 +56,56 @@ pub fn add_service(
         save_config(&config)?;
     }
 
+    logging::append_log(
+        &app,
+        &state,
+        LogLevel::Info,
+        format!("Service '{}' added", name),
+        Some(id.clone()),
+    );
+
     if enabled {
         let config = state.config.lock().unwrap();
         let daemon = state.daemon.lock().unwrap();
         let mut statuses = state.statuses.lock().unwrap();
         match mdns::register_service(&daemon, &svc, &config.hostname) {
             Ok(()) => {
-                statuses.insert(id, ServiceStatus::Running);
+                statuses.insert(id.clone(), ServiceStatus::Running);
+                drop(statuses);
+                drop(daemon);
+                drop(config);
+                logging::append_log(
+                    &app,
+                    &state,
+                    LogLevel::Info,
+                    format!("Service '{}' started", name),
+                    Some(id),
+                );
             }
             Err(e) => {
-                statuses.insert(id, ServiceStatus::Error);
-                eprintln!("Failed to register service: {}", e);
+                statuses.insert(id.clone(), ServiceStatus::Error);
+                drop(statuses);
+                drop(daemon);
+                drop(config);
+                logging::append_log(
+                    &app,
+                    &state,
+                    LogLevel::Error,
+                    format!("Failed to start service '{}': {}", name, e),
+                    Some(id),
+                );
             }
         }
     }
 
-    build_views(&state)
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }
 
 #[tauri::command]
 pub fn update_service(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     name: String,
@@ -107,7 +140,7 @@ pub fn update_service(
 
     let new_svc = ServiceConfig {
         id: id.clone(),
-        name,
+        name: name.clone(),
         service_type,
         port,
         txt,
@@ -122,6 +155,14 @@ pub fn update_service(
         save_config(&config)?;
     }
 
+    logging::append_log(
+        &app,
+        &state,
+        LogLevel::Info,
+        format!("Service '{}' updated", name),
+        Some(id.clone()),
+    );
+
     // Re-register if should be enabled
     if enabled {
         let config = state.config.lock().unwrap();
@@ -129,20 +170,42 @@ pub fn update_service(
         let mut statuses = state.statuses.lock().unwrap();
         match mdns::register_service(&daemon, &new_svc, &config.hostname) {
             Ok(()) => {
-                statuses.insert(id, ServiceStatus::Running);
+                statuses.insert(id.clone(), ServiceStatus::Running);
+                drop(statuses);
+                drop(daemon);
+                drop(config);
+                logging::append_log(
+                    &app,
+                    &state,
+                    LogLevel::Info,
+                    format!("Service '{}' started", name),
+                    Some(id),
+                );
             }
             Err(e) => {
-                statuses.insert(id, ServiceStatus::Error);
-                eprintln!("Failed to register service: {}", e);
+                statuses.insert(id.clone(), ServiceStatus::Error);
+                drop(statuses);
+                drop(daemon);
+                drop(config);
+                logging::append_log(
+                    &app,
+                    &state,
+                    LogLevel::Error,
+                    format!("Failed to start service '{}': {}", name, e),
+                    Some(id),
+                );
             }
         }
     }
 
-    build_views(&state)
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }
 
 #[tauri::command]
 pub fn delete_service(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<ServiceView>, AppError> {
@@ -179,11 +242,22 @@ pub fn delete_service(
         statuses.remove(&id);
     }
 
-    build_views(&state)
+    logging::append_log(
+        &app,
+        &state,
+        LogLevel::Info,
+        format!("Service '{}' deleted", svc_config.name),
+        Some(id),
+    );
+
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }
 
 #[tauri::command]
 pub fn toggle_service(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<ServiceView>, AppError> {
@@ -220,6 +294,13 @@ pub fn toggle_service(
             }
             save_config(&config)?;
         }
+        logging::append_log(
+            &app,
+            &state,
+            LogLevel::Info,
+            format!("Service '{}' stopped", svc_config.name),
+            Some(id),
+        );
     } else {
         // Start
         {
@@ -229,10 +310,29 @@ pub fn toggle_service(
             match mdns::register_service(&daemon, &svc_config, &config.hostname) {
                 Ok(()) => {
                     statuses.insert(id.clone(), ServiceStatus::Running);
+                    drop(statuses);
+                    drop(daemon);
+                    drop(config);
+                    logging::append_log(
+                        &app,
+                        &state,
+                        LogLevel::Info,
+                        format!("Service '{}' started", svc_config.name),
+                        Some(id.clone()),
+                    );
                 }
                 Err(e) => {
                     statuses.insert(id.clone(), ServiceStatus::Error);
-                    eprintln!("Failed to register service: {}", e);
+                    drop(statuses);
+                    drop(daemon);
+                    drop(config);
+                    logging::append_log(
+                        &app,
+                        &state,
+                        LogLevel::Error,
+                        format!("Failed to start service '{}': {}", svc_config.name, e),
+                        Some(id.clone()),
+                    );
                 }
             }
         }
@@ -245,11 +345,16 @@ pub fn toggle_service(
         }
     }
 
-    build_views(&state)
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }
 
 #[tauri::command]
-pub fn start_all(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
+pub fn start_all(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ServiceView>, AppError> {
     let services: Vec<ServiceConfig>;
     let hostname: String;
 
@@ -285,11 +390,24 @@ pub fn start_all(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppErro
         save_config(&config)?;
     }
 
-    build_views(&state)
+    logging::append_log(
+        &app,
+        &state,
+        LogLevel::Info,
+        "All services started".to_string(),
+        None,
+    );
+
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }
 
 #[tauri::command]
-pub fn stop_all(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
+pub fn stop_all(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ServiceView>, AppError> {
     let services: Vec<ServiceConfig>;
     let hostname: String;
 
@@ -318,11 +436,38 @@ pub fn stop_all(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError
         save_config(&config)?;
     }
 
-    build_views(&state)
+    logging::append_log(
+        &app,
+        &state,
+        LogLevel::Info,
+        "All services stopped".to_string(),
+        None,
+    );
+
+    let views = build_views(&state)?;
+    let _ = app.emit("services-changed", &views);
+    Ok(views)
 }
 
 #[tauri::command]
 pub fn get_host_name(state: State<'_, AppState>) -> String {
     let config = state.config.lock().unwrap();
     config.hostname.clone()
+}
+
+#[tauri::command]
+pub fn get_event_logs(state: State<'_, AppState>) -> Vec<LogEntry> {
+    let logs = state.logs.lock().unwrap();
+    logs.iter().cloned().collect()
+}
+
+#[tauri::command]
+pub fn clear_event_logs(state: State<'_, AppState>) {
+    let mut logs = state.logs.lock().unwrap();
+    logs.clear();
+}
+
+#[tauri::command]
+pub fn get_network_interfaces() -> Vec<NetworkInterface> {
+    network::get_interfaces()
 }
