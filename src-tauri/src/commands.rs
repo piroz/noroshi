@@ -2,7 +2,9 @@ use crate::config::save_config;
 use crate::error::AppError;
 use crate::logging;
 use crate::mdns;
-use crate::models::{LogEntry, LogLevel, NetworkInterface, ServiceConfig, ServiceStatus, ServiceView};
+use crate::models::{
+    LogEntry, LogLevel, NetworkInterface, ServiceConfig, ServiceStatus, ServiceView,
+};
 use crate::network;
 use crate::state::AppState;
 use std::collections::HashMap;
@@ -351,10 +353,7 @@ pub fn toggle_service(
 }
 
 #[tauri::command]
-pub fn start_all(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<ServiceView>, AppError> {
+pub fn start_all(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
     let services: Vec<ServiceConfig>;
     let hostname: String;
 
@@ -404,10 +403,7 @@ pub fn start_all(
 }
 
 #[tauri::command]
-pub fn stop_all(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<ServiceView>, AppError> {
+pub fn stop_all(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
     let services: Vec<ServiceConfig>;
     let hostname: String;
 

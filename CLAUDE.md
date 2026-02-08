@@ -19,6 +19,15 @@ cd src-tauri && PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/p
 
 # Install frontend dependencies
 npm install
+
+# Lint frontend (ESLint)
+npx eslint src/
+
+# Format frontend (Prettier)
+npx prettier --write 'src/**/*.{ts,tsx}'
+
+# Format Rust backend
+cd src-tauri && cargo fmt
 ```
 
 **Important:** On Linux, `PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig` is required for all cargo/tauri commands due to GTK/WebKit system dependencies.
