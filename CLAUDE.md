@@ -34,7 +34,7 @@ Tauri v2 desktop app: Rust backend communicates with React frontend via IPC (`in
 - **state.rs** — `AppState` holds three `Mutex`-wrapped fields: config, daemon, and status map. Each mutex is locked/released in small scoped blocks to avoid deadlocks.
 - **commands.rs** — 8 Tauri commands. Every mutating command returns the full `Vec<ServiceView>` so the frontend can replace its state entirely (response-based, not optimistic).
 - **config.rs** — Reads/writes `~/.mdns-manager/config.json`. Uses atomic writes (write to `.tmp`, then rename). Hostname is always refreshed from OS on load, not persisted.
-- **mdns.rs** — Wraps `mdns-sd` crate. Converts user-facing service types (e.g. `_http._tcp`) to mDNS format (`_http._tcp.local.`). The `ServiceDaemon` is long-lived (one per app lifetime).
+- **mdns.rs** — Wraps `mdns-sd` crate. Converts user-facing service types (e.g. `_http._tcp`) to mDNS format (`_http._tcp.local.`). The `ServiceDaemon` is long-lived (one per app lifetime). `ServiceInfo` must call `.enable_addr_auto()` — without it, addresses are empty and the service is not advertised on the network.
 - **error.rs** — `AppError` uses `thiserror` for Display and implements `Serialize` manually (serializes as the error string).
 
 ### Frontend (`src/`)

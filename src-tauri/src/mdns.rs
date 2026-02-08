@@ -45,7 +45,8 @@ pub fn register_service(
         config.port,
         &properties[..],
     )
-    .map_err(|e| AppError::Mdns(e.to_string()))?;
+    .map_err(|e| AppError::Mdns(e.to_string()))?
+    .enable_addr_auto();
 
     daemon
         .register(service)
