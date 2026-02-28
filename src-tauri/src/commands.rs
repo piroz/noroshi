@@ -105,6 +105,7 @@ pub fn add_service(
     Ok(views)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn update_service(
     app: AppHandle,
