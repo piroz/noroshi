@@ -105,6 +105,7 @@ pub fn add_service(
     Ok(views)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn update_service(
     app: AppHandle,
@@ -152,7 +153,7 @@ pub fn update_service(
     {
         let mut config = state.config.lock().unwrap();
         if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
-            *svc = new_svc.clone();
+            svc.clone_from(&new_svc);
         }
         save_config(&config)?;
     }
@@ -480,8 +481,8 @@ pub fn import_config(
     state: State<'_, AppState>,
     json: String,
 ) -> Result<Vec<ServiceView>, AppError> {
-    let mut imported: AppConfig =
-        serde_json::from_str(&json).map_err(|e| AppError::Config(format!("Invalid JSON: {}", e)))?;
+    let mut imported: AppConfig = serde_json::from_str(&json)
+        .map_err(|e| AppError::Config(format!("Invalid JSON: {}", e)))?;
 
     // Assign new UUIDs to avoid collisions
     for svc in imported.services.iter_mut() {
@@ -506,12 +507,12 @@ pub fn import_config(
         let config = state.config.lock().unwrap();
         config.hostname.clone()
     };
-    imported.hostname = hostname.clone();
+    imported.hostname.clone_from(&hostname);
 
     // Replace config and save
     {
         let mut config = state.config.lock().unwrap();
-        *config = imported.clone();
+        config.clone_from(&imported);
         save_config(&config)?;
     }
 
@@ -547,7 +548,11 @@ pub fn import_config(
         format!(
             "Configuration imported ({} service{})",
             imported.services.len(),
-            if imported.services.len() == 1 { "" } else { "s" }
+            if imported.services.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
         ),
         None,
     );
