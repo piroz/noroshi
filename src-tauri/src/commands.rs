@@ -152,7 +152,7 @@ pub fn update_service(
     {
         let mut config = state.config.lock().unwrap();
         if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
-            *svc = new_svc.clone();
+            svc.clone_from(&new_svc);
         }
         save_config(&config)?;
     }
@@ -506,12 +506,12 @@ pub fn import_config(
         let config = state.config.lock().unwrap();
         config.hostname.clone()
     };
-    imported.hostname = hostname.clone();
+    imported.hostname.clone_from(&hostname);
 
     // Replace config and save
     {
         let mut config = state.config.lock().unwrap();
-        *config = imported.clone();
+        config.clone_from(&imported);
         save_config(&config)?;
     }
 
