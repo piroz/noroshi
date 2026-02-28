@@ -480,8 +480,8 @@ pub fn import_config(
     state: State<'_, AppState>,
     json: String,
 ) -> Result<Vec<ServiceView>, AppError> {
-    let mut imported: AppConfig =
-        serde_json::from_str(&json).map_err(|e| AppError::Config(format!("Invalid JSON: {}", e)))?;
+    let mut imported: AppConfig = serde_json::from_str(&json)
+        .map_err(|e| AppError::Config(format!("Invalid JSON: {}", e)))?;
 
     // Assign new UUIDs to avoid collisions
     for svc in imported.services.iter_mut() {
@@ -547,7 +547,11 @@ pub fn import_config(
         format!(
             "Configuration imported ({} service{})",
             imported.services.len(),
-            if imported.services.len() == 1 { "" } else { "s" }
+            if imported.services.len() == 1 {
+                ""
+            } else {
+                "s"
+            }
         ),
         None,
     );
