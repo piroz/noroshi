@@ -59,6 +59,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libssl-dev \
+            libxdo-dev \
             patchelf
 
       - name: Cargo check
