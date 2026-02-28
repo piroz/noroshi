@@ -16,8 +16,10 @@ fn config_path() -> Result<PathBuf, AppError> {
 pub fn load_config() -> Result<AppConfig, AppError> {
     let path = config_path()?;
     if !path.exists() {
-        let mut config = AppConfig::default();
-        config.hostname = get_hostname();
+        let config = AppConfig {
+            hostname: get_hostname(),
+            ..AppConfig::default()
+        };
         save_config(&config)?;
         return Ok(config);
     }

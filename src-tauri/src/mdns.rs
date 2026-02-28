@@ -70,7 +70,7 @@ pub fn unregister_service(
         format!("{}.local.", hostname)
     };
 
-    let fullname = format!("{}.{}", &config.name, &mdns_type);
+    let fullname = format!("{}.{}", config.name, mdns_type);
 
     let properties: Vec<(&str, &str)> = config
         .txt
