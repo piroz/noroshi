@@ -59,7 +59,7 @@ impl ServiceView {
             id: config.id.clone(),
             name: config.name.clone(),
             service_type: config.service_type.clone(),
-            port: config.port.clone(),
+            port: config.port,
             txt: config.txt.clone(),
             enabled: config.enabled,
             status,
