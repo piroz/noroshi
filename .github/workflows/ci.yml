@@ -36,6 +36,9 @@ jobs:
       - name: TypeScript type check
         run: npx tsc --noEmit
 
+      # - name: Frontend tests
+      #   run: npx vitest run
+
   cargo-check:
     runs-on: ubuntu-latest
     steps:
@@ -70,3 +73,7 @@ jobs:
       - name: Cargo clippy
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
+
+      # - name: Cargo test
+      #   working-directory: src-tauri
+      #   run: cargo test
