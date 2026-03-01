@@ -29,7 +29,7 @@ export function SettingsView({ onImport }: Props) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "mdns-manager-config.json";
+      a.download = "noroshi-config.json";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
