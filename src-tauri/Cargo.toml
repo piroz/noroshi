@@ -1,5 +1,5 @@
 [package]
-name = "mdns-manager"
+name = "noroshi"
 version = "0.1.0"
 description = "mDNS service advertisement manager"
 authors = ["you"]

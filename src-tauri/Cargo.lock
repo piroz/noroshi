@@ -1955,24 +1955,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
 
 [[package]]
-name = "mdns-manager"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dirs",
- "hostname",
- "if-addrs 0.13.4",
- "mdns-sd",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
 name = "mdns-sd"
 version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2092,6 +2074,24 @@ name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
+
+[[package]]
+name = "noroshi"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "hostname",
+ "if-addrs 0.13.4",
+ "mdns-sd",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "thiserror 2.0.18",
+ "uuid",
+]
 
 [[package]]
 name = "num-conv"
