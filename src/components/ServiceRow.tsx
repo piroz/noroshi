@@ -3,6 +3,7 @@ import type { ServiceView } from "../types";
 
 interface Props {
   service: ServiceView;
+  hostname: string;
   onToggle: (id: string) => void;
   onEdit: (service: ServiceView) => void;
   onDelete: (id: string) => void;
@@ -19,22 +20,31 @@ const serviceTypeToScheme: Record<string, string> = {
   "_https._tcp": "https",
 };
 
-function getServiceUrl(service: ServiceView): string | null {
+function getServiceUrl(
+  service: ServiceView,
+  hostname: string,
+): string | null {
   const scheme = serviceTypeToScheme[service.type];
-  if (!scheme) return null;
-  return `${scheme}://localhost:${service.port}`;
+  if (!scheme || !hostname) return null;
+  return `${scheme}://${hostname}.local:${service.port}`;
 }
 
-export function ServiceRow({ service, onToggle, onEdit, onDelete }: Props) {
+export function ServiceRow({
+  service,
+  hostname,
+  onToggle,
+  onEdit,
+  onDelete,
+}: Props) {
   const txtEntries = Object.entries(service.txt);
-  const url = getServiceUrl(service);
+  const url = getServiceUrl(service, hostname);
 
   return (
     <tr className="border-b border-gray-200 hover:bg-gray-50">
       <td className="px-4 py-3 text-sm font-medium">
         {url && service.status === "running" ? (
           <button
-            onClick={() => openUrl(url)}
+            onClick={() => openUrl(url).catch(console.error)}
             className="text-blue-600 hover:text-blue-800 hover:underline"
             title={url}
           >
