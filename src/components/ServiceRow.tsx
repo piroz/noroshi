@@ -18,6 +18,14 @@ const statusColors: Record<ServiceView["status"], string> = {
 const serviceTypeToScheme: Record<string, string> = {
   "_http._tcp": "http",
   "_https._tcp": "https",
+  "_ftp._tcp": "ftp",
+  "_ssh._tcp": "ssh",
+  "_sftp-ssh._tcp": "sftp",
+  "_smb._tcp": "smb",
+  "_vnc._tcp": "vnc",
+  "_rdp._tcp": "rdp",
+  "_ipp._tcp": "ipp",
+  "_telnet._tcp": "telnet",
 };
 
 function getServiceUrl(
