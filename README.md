@@ -61,7 +61,7 @@ npm run tauri build
 4. Check the **Monitor** tab for real-time status and logs
 5. Use the **Settings** tab to import or export your configuration
 
-Configuration is stored at `~/.mdns-manager/config.json`.
+Configuration is stored at `~/.noroshi/config.json`.
 
 ## Configuration
 
