@@ -2,6 +2,21 @@ import { useState } from "react";
 import type { ServiceView } from "../types";
 import { TxtRecordEditor } from "./TxtRecordEditor";
 
+const PRESET_SERVICE_TYPES = [
+  { value: "_http._tcp", label: "HTTP" },
+  { value: "_https._tcp", label: "HTTPS" },
+  { value: "_ftp._tcp", label: "FTP" },
+  { value: "_ssh._tcp", label: "SSH" },
+  { value: "_sftp-ssh._tcp", label: "SFTP" },
+  { value: "_smb._tcp", label: "SMB" },
+  { value: "_vnc._tcp", label: "VNC" },
+  { value: "_rdp._tcp", label: "RDP" },
+  { value: "_ipp._tcp", label: "IPP (Printer)" },
+  { value: "_telnet._tcp", label: "Telnet" },
+] as const;
+
+const CUSTOM_OPTION = "__custom__";
+
 interface Props {
   service: ServiceView | null;
   onSave: (
@@ -16,7 +31,14 @@ interface Props {
 
 export function ServiceFormDialog({ service, onSave, onCancel }: Props) {
   const [name, setName] = useState(service?.name ?? "");
-  const [serviceType, setServiceType] = useState(service?.type ?? "_http._tcp");
+  const initialType = service?.type ?? "_http._tcp";
+  const isPreset = PRESET_SERVICE_TYPES.some((p) => p.value === initialType);
+  const [selectedPreset, setSelectedPreset] = useState(
+    isPreset ? initialType : CUSTOM_OPTION,
+  );
+  const [customType, setCustomType] = useState(isPreset ? "" : initialType);
+  const serviceType =
+    selectedPreset === CUSTOM_OPTION ? customType : selectedPreset;
   const [port, setPort] = useState(service?.port ?? 8080);
   const [txt, setTxt] = useState<Record<string, string>>(
     service ? { ...service.txt } : {},
@@ -58,14 +80,28 @@ export function ServiceFormDialog({ service, onSave, onCancel }: Props) {
           <label className="block text-sm font-medium text-gray-700">
             Service Type
           </label>
-          <input
-            type="text"
-            required
-            value={serviceType}
-            onChange={(e) => setServiceType(e.target.value)}
+          <select
+            value={selectedPreset}
+            onChange={(e) => setSelectedPreset(e.target.value)}
             className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            placeholder="_http._tcp"
-          />
+          >
+            {PRESET_SERVICE_TYPES.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label} ({p.value})
+              </option>
+            ))}
+            <option value={CUSTOM_OPTION}>Custom...</option>
+          </select>
+          {selectedPreset === CUSTOM_OPTION && (
+            <input
+              type="text"
+              required
+              value={customType}
+              onChange={(e) => setCustomType(e.target.value)}
+              className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              placeholder="_myservice._tcp"
+            />
+          )}
         </div>
 
         <div>
