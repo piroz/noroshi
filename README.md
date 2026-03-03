@@ -1,5 +1,9 @@
 # noroshi
 
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="noroshi icon" width="128" />
+</p>
+
 > Raise a smoke signal on .local — mDNS service publisher GUI
 
 **noroshi** (狼煙, "smoke signal") is a desktop application for managing and publishing mDNS (Bonjour / Avahi) services on your local network through a simple GUI.
