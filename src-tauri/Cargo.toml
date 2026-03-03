@@ -6,7 +6,7 @@ authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "mdns_manager_lib"
+name = "noroshi_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
