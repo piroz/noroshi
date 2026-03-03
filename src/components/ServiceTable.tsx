@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getHostName } from "../lib/commands";
 import type { ServiceView } from "../types";
 import { ServiceRow } from "./ServiceRow";
 
@@ -9,6 +11,12 @@ interface Props {
 }
 
 export function ServiceTable({ services, onToggle, onEdit, onDelete }: Props) {
+  const [hostname, setHostname] = useState("");
+
+  useEffect(() => {
+    getHostName().then(setHostname).catch(console.error);
+  }, []);
+
   if (services.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
@@ -37,6 +45,7 @@ export function ServiceTable({ services, onToggle, onEdit, onDelete }: Props) {
             <ServiceRow
               key={svc.id}
               service={svc}
+              hostname={hostname}
               onToggle={onToggle}
               onEdit={onEdit}
               onDelete={onDelete}

@@ -1,7 +1,9 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ServiceView } from "../types";
 
 interface Props {
   service: ServiceView;
+  hostname: string;
   onToggle: (id: string) => void;
   onEdit: (service: ServiceView) => void;
   onDelete: (id: string) => void;
@@ -13,12 +15,50 @@ const statusColors: Record<ServiceView["status"], string> = {
   error: "bg-red-100 text-red-800",
 };
 
-export function ServiceRow({ service, onToggle, onEdit, onDelete }: Props) {
+const serviceTypeToScheme: Record<string, string> = {
+  "_http._tcp": "http",
+  "_https._tcp": "https",
+  "_ftp._tcp": "ftp",
+  "_ssh._tcp": "ssh",
+  "_sftp-ssh._tcp": "sftp",
+  "_smb._tcp": "smb",
+  "_vnc._tcp": "vnc",
+  "_rdp._tcp": "rdp",
+  "_ipp._tcp": "ipp",
+  "_telnet._tcp": "telnet",
+};
+
+function getServiceUrl(service: ServiceView, hostname: string): string | null {
+  const scheme = serviceTypeToScheme[service.type];
+  if (!scheme || !hostname) return null;
+  return `${scheme}://${hostname}.local:${service.port}`;
+}
+
+export function ServiceRow({
+  service,
+  hostname,
+  onToggle,
+  onEdit,
+  onDelete,
+}: Props) {
   const txtEntries = Object.entries(service.txt);
+  const url = getServiceUrl(service, hostname);
 
   return (
     <tr className="border-b border-gray-200 hover:bg-gray-50">
-      <td className="px-4 py-3 text-sm font-medium">{service.name}</td>
+      <td className="px-4 py-3 text-sm font-medium">
+        {url && service.status === "running" ? (
+          <button
+            onClick={() => openUrl(url).catch(console.error)}
+            className="text-blue-600 hover:text-blue-800 hover:underline"
+            title={url}
+          >
+            {service.name}
+          </button>
+        ) : (
+          service.name
+        )}
+      </td>
       <td className="px-4 py-3 text-sm font-mono text-gray-600">
         {service.type}
       </td>
