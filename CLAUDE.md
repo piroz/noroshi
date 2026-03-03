@@ -42,7 +42,7 @@ Tauri v2 desktop app: Rust backend communicates with React frontend via IPC (`in
 - **models.rs** — Data types: `AppConfig`, `ServiceConfig` (persisted), `ServiceStatus` (runtime enum), `ServiceView` (sent to frontend, combines config + status), `LogEntry`/`LogLevel` (monitoring), `NetworkInterface`. `ServiceConfig.service_type` is serialized as `"type"` via `#[serde(rename)]`.
 - **state.rs** — `AppState` holds four `Mutex`-wrapped fields: config, daemon, status map, and logs (`VecDeque<LogEntry>`). Each mutex is locked/released in small scoped blocks to avoid deadlocks.
 - **commands.rs** — 13 Tauri commands. Every mutating command takes `AppHandle`, logs via `logging::append_log()`, emits `services-changed` event, and returns full `Vec<ServiceView>` so the frontend can replace its state entirely (response-based, not optimistic). Includes `export_config` (returns pretty JSON) and `import_config` (replaces all services with new UUIDs, stops existing, starts enabled).
-- **config.rs** — Reads/writes `~/.mdns-manager/config.json`. Uses atomic writes (write to `.tmp`, then rename). Hostname is always refreshed from OS on load, not persisted.
+- **config.rs** — Reads/writes `~/.noroshi/config.json`. Uses atomic writes (write to `.tmp`, then rename). Hostname is always refreshed from OS on load, not persisted.
 - **mdns.rs** — Wraps `mdns-sd` crate. Converts user-facing service types (e.g. `_http._tcp`) to mDNS format (`_http._tcp.local.`). The `ServiceDaemon` is long-lived (one per app lifetime). `ServiceInfo` must call `.enable_addr_auto()` — without it, addresses are empty and the service is not advertised on the network.
 - **logging.rs** — `append_log()` adds to in-memory `VecDeque` (max 500 entries) and emits `log-entry` Tauri event.
 - **network.rs** — `get_interfaces()` uses `if-addrs` crate, excludes loopback, groups addresses by interface name.
@@ -65,10 +65,10 @@ Backend emits two Tauri events:
 ### Key Design Decisions
 
 - Services are identified by UUID (`id` field), generated server-side on add.
-- The Cargo lib name is `mdns_manager_lib` (referenced in `main.rs`).
+- The Cargo lib name is `noroshi_lib` (referenced in `main.rs`).
 - Config file version field exists for future schema migration but is currently always `1`.
 - Logs are in-memory only (not persisted), capped at 500 entries via `VecDeque`.
 
 ## Spec
 
-See `mdns-manager-spec.md` for the full design spec. All three phases are implemented: Phase 1 (core service management), Phase 2 (monitoring), Phase 3 (settings/polish — config import/export, hostname tooltip).
+See `noroshi-spec.md` for the full design spec. All three phases are implemented: Phase 1 (core service management), Phase 2 (monitoring), Phase 3 (settings/polish — config import/export, hostname tooltip).
