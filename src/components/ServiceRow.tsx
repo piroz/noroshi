@@ -28,10 +28,7 @@ const serviceTypeToScheme: Record<string, string> = {
   "_telnet._tcp": "telnet",
 };
 
-function getServiceUrl(
-  service: ServiceView,
-  hostname: string,
-): string | null {
+function getServiceUrl(service: ServiceView, hostname: string): string | null {
   const scheme = serviceTypeToScheme[service.type];
   if (!scheme || !hostname) return null;
   return `${scheme}://${hostname}.local:${service.port}`;
