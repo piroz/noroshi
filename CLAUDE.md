@@ -24,14 +24,6 @@ Types:
 - `refactor:` — code restructuring without behavior change
 - `test:` — adding or updating tests
 
-## Release flow
-
-Releases are managed by release-please. Do not manually edit version in package.json or CHANGELOG.md.
-
-1. Merge feature PRs to master with conventional commit messages
-2. release-please auto-creates/updates a Release PR
-3. Merge the Release PR when ready to release → tag + npm publish
-
 ## Build & Development Commands
 
 ```bash
