@@ -47,3 +47,54 @@ pub fn get_hostname() -> String {
         .and_then(|h| h.into_string().ok())
         .unwrap_or_else(|| "unknown".into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::AppConfig;
+
+    #[test]
+    fn save_and_read_config_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+
+        let config = AppConfig {
+            version: 1,
+            hostname: "testhost".into(),
+            services: vec![],
+        };
+
+        let content = serde_json::to_string_pretty(&config).unwrap();
+        std::fs::write(&path, &content).unwrap();
+
+        let loaded: AppConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(loaded.version, 1);
+        assert_eq!(loaded.hostname, "testhost");
+        assert!(loaded.services.is_empty());
+    }
+
+    #[test]
+    fn atomic_write_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let tmp_path = path.with_extension("json.tmp");
+
+        let config = AppConfig::default();
+        let content = serde_json::to_string_pretty(&config).unwrap();
+        std::fs::write(&tmp_path, &content).unwrap();
+        std::fs::rename(&tmp_path, &path).unwrap();
+
+        assert!(!tmp_path.exists());
+        assert!(path.exists());
+        let loaded: AppConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(loaded.version, 1);
+    }
+
+    #[test]
+    fn get_hostname_returns_non_empty() {
+        let hostname = get_hostname();
+        assert!(!hostname.is_empty());
+    }
+}

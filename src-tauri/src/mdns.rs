@@ -97,3 +97,28 @@ pub fn unregister_service(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_mdns_type_appends_local() {
+        assert_eq!(to_mdns_type("_http._tcp"), "_http._tcp.local.");
+    }
+
+    #[test]
+    fn to_mdns_type_already_has_local() {
+        assert_eq!(to_mdns_type("_http._tcp.local"), "_http._tcp.local.");
+    }
+
+    #[test]
+    fn to_mdns_type_already_has_local_dot() {
+        assert_eq!(to_mdns_type("_http._tcp.local."), "_http._tcp.local.");
+    }
+
+    #[test]
+    fn to_mdns_type_with_trailing_dot() {
+        assert_eq!(to_mdns_type("_ssh._tcp."), "_ssh._tcp.local.");
+    }
+}
