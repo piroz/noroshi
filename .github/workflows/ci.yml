@@ -8,13 +8,40 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Detect which paths changed to skip unnecessary jobs
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig*.json'
+              - 'vite.config.*'
+              - 'eslint.config.*'
+              - '.github/workflows/ci.yml'
+            backend:
+              - 'src-tauri/**'
+              - '.github/workflows/ci.yml'
+
   lint-and-check:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +67,8 @@ jobs:
         run: npx vitest run
 
   cargo-check:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -61,31 +90,35 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Install system dependencies (Linux)
+      - name: Cache apt packages (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libxdo-dev \
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: >-
+            libgtk-3-dev
+            libwebkit2gtk-4.1-dev
+            libayatana-appindicator3-dev
+            librsvg2-dev
+            libssl-dev
+            libxdo-dev
             patchelf
+          version: 1.0
 
       - name: Cargo check
         working-directory: src-tauri
         run: cargo check
 
+      - name: Cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+      # fmt and clippy only on Linux to avoid redundant checks across OSes
       - name: Cargo fmt check
+        if: runner.os == 'Linux'
         working-directory: src-tauri
         run: cargo fmt -- --check
 
       - name: Cargo clippy
+        if: runner.os == 'Linux'
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
-
-      - name: Cargo test
-        working-directory: src-tauri
-        run: cargo test
