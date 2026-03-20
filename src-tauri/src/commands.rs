@@ -27,6 +27,52 @@ fn build_views(state: &AppState) -> Result<Vec<ServiceView>, AppError> {
         .collect())
 }
 
+/// Register a service via mDNS, update its status, and log the result.
+pub(crate) fn try_register_service(
+    app: &AppHandle,
+    state: &AppState,
+    svc: &ServiceConfig,
+    hostname: &str,
+) {
+    let daemon = state.daemon.lock().unwrap();
+    let mut statuses = state.statuses.lock().unwrap();
+    match mdns::register_service(&daemon, svc, hostname) {
+        Ok(()) => {
+            statuses.insert(svc.id.clone(), ServiceStatus::Running);
+            drop(statuses);
+            drop(daemon);
+            logging::append_log(
+                app,
+                state,
+                LogLevel::Info,
+                format!("Service '{}' started", svc.name),
+                Some(svc.id.clone()),
+            );
+        }
+        Err(e) => {
+            statuses.insert(svc.id.clone(), ServiceStatus::Error);
+            drop(statuses);
+            drop(daemon);
+            logging::append_log(
+                app,
+                state,
+                LogLevel::Error,
+                format!("Failed to start service '{}': {}", svc.name, e),
+                Some(svc.id.clone()),
+            );
+        }
+    }
+}
+
+/// Unregister a service via mDNS and set its status to Stopped.
+fn try_unregister_service(state: &AppState, svc: &ServiceConfig, hostname: &str) {
+    let daemon = state.daemon.lock().unwrap();
+    let _ = mdns::unregister_service(&daemon, svc, hostname);
+    drop(daemon);
+    let mut statuses = state.statuses.lock().unwrap();
+    statuses.insert(svc.id.clone(), ServiceStatus::Stopped);
+}
+
 #[tauri::command]
 pub fn get_services(state: State<'_, AppState>) -> Result<Vec<ServiceView>, AppError> {
     build_views(&state)
@@ -52,52 +98,23 @@ pub fn add_service(
         enabled,
     };
 
-    {
+    let hostname = {
         let mut config = state.config.lock().unwrap();
         config.services.push(svc.clone());
         save_config(&config)?;
-    }
+        config.hostname.clone()
+    };
 
     logging::append_log(
         &app,
         &state,
         LogLevel::Info,
         format!("Service '{}' added", name),
-        Some(id.clone()),
+        Some(id),
     );
 
     if enabled {
-        let config = state.config.lock().unwrap();
-        let daemon = state.daemon.lock().unwrap();
-        let mut statuses = state.statuses.lock().unwrap();
-        match mdns::register_service(&daemon, &svc, &config.hostname) {
-            Ok(()) => {
-                statuses.insert(id.clone(), ServiceStatus::Running);
-                drop(statuses);
-                drop(daemon);
-                drop(config);
-                logging::append_log(
-                    &app,
-                    &state,
-                    LogLevel::Info,
-                    format!("Service '{}' started", name),
-                    Some(id),
-                );
-            }
-            Err(e) => {
-                statuses.insert(id.clone(), ServiceStatus::Error);
-                drop(statuses);
-                drop(daemon);
-                drop(config);
-                logging::append_log(
-                    &app,
-                    &state,
-                    LogLevel::Error,
-                    format!("Failed to start service '{}': {}", name, e),
-                    Some(id),
-                );
-            }
-        }
+        try_register_service(&app, &state, &svc, &hostname);
     }
 
     let views = build_views(&state)?;
@@ -119,6 +136,7 @@ pub fn update_service(
 ) -> Result<Vec<ServiceView>, AppError> {
     let was_running;
     let old_config;
+    let hostname;
 
     {
         let config = state.config.lock().unwrap();
@@ -130,15 +148,12 @@ pub fn update_service(
             .ok_or_else(|| AppError::NotFound(id.clone()))?;
         was_running = statuses.get(&id).copied() == Some(ServiceStatus::Running);
         old_config = svc.clone();
+        hostname = config.hostname.clone();
     }
 
     // Unregister old if running
     if was_running {
-        let config = state.config.lock().unwrap();
-        let daemon = state.daemon.lock().unwrap();
-        let _ = mdns::unregister_service(&daemon, &old_config, &config.hostname);
-        let mut statuses = state.statuses.lock().unwrap();
-        statuses.insert(id.clone(), ServiceStatus::Stopped);
+        try_unregister_service(&state, &old_config, &hostname);
     }
 
     let new_svc = ServiceConfig {
@@ -163,42 +178,12 @@ pub fn update_service(
         &state,
         LogLevel::Info,
         format!("Service '{}' updated", name),
-        Some(id.clone()),
+        Some(id),
     );
 
     // Re-register if should be enabled
     if enabled {
-        let config = state.config.lock().unwrap();
-        let daemon = state.daemon.lock().unwrap();
-        let mut statuses = state.statuses.lock().unwrap();
-        match mdns::register_service(&daemon, &new_svc, &config.hostname) {
-            Ok(()) => {
-                statuses.insert(id.clone(), ServiceStatus::Running);
-                drop(statuses);
-                drop(daemon);
-                drop(config);
-                logging::append_log(
-                    &app,
-                    &state,
-                    LogLevel::Info,
-                    format!("Service '{}' started", name),
-                    Some(id),
-                );
-            }
-            Err(e) => {
-                statuses.insert(id.clone(), ServiceStatus::Error);
-                drop(statuses);
-                drop(daemon);
-                drop(config);
-                logging::append_log(
-                    &app,
-                    &state,
-                    LogLevel::Error,
-                    format!("Failed to start service '{}': {}", name, e),
-                    Some(id),
-                );
-            }
-        }
+        try_register_service(&app, &state, &new_svc, &hostname);
     }
 
     let views = build_views(&state)?;
@@ -213,25 +198,24 @@ pub fn delete_service(
     id: String,
 ) -> Result<Vec<ServiceView>, AppError> {
     let svc_config;
+    let is_running;
+    let hostname;
     {
         let config = state.config.lock().unwrap();
+        let statuses = state.statuses.lock().unwrap();
         svc_config = config
             .services
             .iter()
             .find(|s| s.id == id)
             .ok_or_else(|| AppError::NotFound(id.clone()))?
             .clone();
+        is_running = statuses.get(&id).copied() == Some(ServiceStatus::Running);
+        hostname = config.hostname.clone();
     }
 
     // Unregister if running
-    {
-        let statuses = state.statuses.lock().unwrap();
-        if statuses.get(&id).copied() == Some(ServiceStatus::Running) {
-            drop(statuses);
-            let config = state.config.lock().unwrap();
-            let daemon = state.daemon.lock().unwrap();
-            let _ = mdns::unregister_service(&daemon, &svc_config, &config.hostname);
-        }
+    if is_running {
+        try_unregister_service(&state, &svc_config, &hostname);
     }
 
     {
@@ -266,6 +250,7 @@ pub fn toggle_service(
 ) -> Result<Vec<ServiceView>, AppError> {
     let svc_config;
     let currently_running;
+    let hostname;
 
     {
         let config = state.config.lock().unwrap();
@@ -277,19 +262,12 @@ pub fn toggle_service(
             .ok_or_else(|| AppError::NotFound(id.clone()))?
             .clone();
         currently_running = statuses.get(&id).copied() == Some(ServiceStatus::Running);
+        hostname = config.hostname.clone();
     }
 
     if currently_running {
         // Stop
-        {
-            let config = state.config.lock().unwrap();
-            let daemon = state.daemon.lock().unwrap();
-            let _ = mdns::unregister_service(&daemon, &svc_config, &config.hostname);
-        }
-        {
-            let mut statuses = state.statuses.lock().unwrap();
-            statuses.insert(id.clone(), ServiceStatus::Stopped);
-        }
+        try_unregister_service(&state, &svc_config, &hostname);
         {
             let mut config = state.config.lock().unwrap();
             if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
@@ -306,39 +284,7 @@ pub fn toggle_service(
         );
     } else {
         // Start
-        {
-            let config = state.config.lock().unwrap();
-            let daemon = state.daemon.lock().unwrap();
-            let mut statuses = state.statuses.lock().unwrap();
-            match mdns::register_service(&daemon, &svc_config, &config.hostname) {
-                Ok(()) => {
-                    statuses.insert(id.clone(), ServiceStatus::Running);
-                    drop(statuses);
-                    drop(daemon);
-                    drop(config);
-                    logging::append_log(
-                        &app,
-                        &state,
-                        LogLevel::Info,
-                        format!("Service '{}' started", svc_config.name),
-                        Some(id.clone()),
-                    );
-                }
-                Err(e) => {
-                    statuses.insert(id.clone(), ServiceStatus::Error);
-                    drop(statuses);
-                    drop(daemon);
-                    drop(config);
-                    logging::append_log(
-                        &app,
-                        &state,
-                        LogLevel::Error,
-                        format!("Failed to start service '{}': {}", svc_config.name, e),
-                        Some(id.clone()),
-                    );
-                }
-            }
-        }
+        try_register_service(&app, &state, &svc_config, &hostname);
         {
             let mut config = state.config.lock().unwrap();
             if let Some(svc) = config.services.iter_mut().find(|s| s.id == id) {
@@ -364,21 +310,13 @@ pub fn start_all(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Servi
         hostname = config.hostname.clone();
     }
 
-    {
-        let daemon = state.daemon.lock().unwrap();
-        let mut statuses = state.statuses.lock().unwrap();
-        for svc in &services {
-            if statuses.get(&svc.id).copied() != Some(ServiceStatus::Running) {
-                match mdns::register_service(&daemon, svc, &hostname) {
-                    Ok(()) => {
-                        statuses.insert(svc.id.clone(), ServiceStatus::Running);
-                    }
-                    Err(e) => {
-                        statuses.insert(svc.id.clone(), ServiceStatus::Error);
-                        eprintln!("Failed to register service {}: {}", svc.name, e);
-                    }
-                }
-            }
+    for svc in &services {
+        let is_running = {
+            let statuses = state.statuses.lock().unwrap();
+            statuses.get(&svc.id).copied() == Some(ServiceStatus::Running)
+        };
+        if !is_running {
+            try_register_service(&app, &state, svc, &hostname);
         }
     }
 
@@ -414,14 +352,13 @@ pub fn stop_all(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Servic
         hostname = config.hostname.clone();
     }
 
-    {
-        let daemon = state.daemon.lock().unwrap();
-        let mut statuses = state.statuses.lock().unwrap();
-        for svc in &services {
-            if statuses.get(&svc.id).copied() == Some(ServiceStatus::Running) {
-                let _ = mdns::unregister_service(&daemon, svc, &hostname);
-                statuses.insert(svc.id.clone(), ServiceStatus::Stopped);
-            }
+    for svc in &services {
+        let is_running = {
+            let statuses = state.statuses.lock().unwrap();
+            statuses.get(&svc.id).copied() == Some(ServiceStatus::Running)
+        };
+        if is_running {
+            try_unregister_service(&state, svc, &hostname);
         }
     }
 
@@ -517,27 +454,9 @@ pub fn import_config(
     }
 
     // Start enabled services
-    {
-        let daemon = state.daemon.lock().unwrap();
-        let mut statuses = state.statuses.lock().unwrap();
-        for svc in &imported.services {
-            if svc.enabled {
-                match mdns::register_service(&daemon, svc, &hostname) {
-                    Ok(()) => {
-                        statuses.insert(svc.id.clone(), ServiceStatus::Running);
-                    }
-                    Err(e) => {
-                        statuses.insert(svc.id.clone(), ServiceStatus::Error);
-                        logging::append_log(
-                            &app,
-                            &state,
-                            LogLevel::Error,
-                            format!("Failed to start imported service '{}': {}", svc.name, e),
-                            Some(svc.id.clone()),
-                        );
-                    }
-                }
-            }
+    for svc in &imported.services {
+        if svc.enabled {
+            try_register_service(&app, &state, svc, &hostname);
         }
     }
 

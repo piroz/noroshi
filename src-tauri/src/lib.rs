@@ -36,30 +36,25 @@ fn show_main_window(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let cfg = config::load_config().expect("Failed to load config");
-    let daemon = mdns::create_daemon().expect("Failed to create mDNS daemon");
-
-    let mut statuses = HashMap::new();
-
-    // Auto-start enabled services
-    for svc in &cfg.services {
-        if svc.enabled {
-            match mdns::register_service(&daemon, svc, &cfg.hostname) {
-                Ok(()) => {
-                    statuses.insert(svc.id.clone(), ServiceStatus::Running);
-                }
-                Err(e) => {
-                    statuses.insert(svc.id.clone(), ServiceStatus::Error);
-                    eprintln!("Failed to auto-start service {}: {}", svc.name, e);
-                }
-            }
+    let cfg = match config::load_config() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Failed to load config: {}", e);
+            std::process::exit(1);
         }
-    }
+    };
+    let daemon = match mdns::create_daemon() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Failed to create mDNS daemon: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     let app_state = AppState {
         config: Mutex::new(cfg),
         daemon: Mutex::new(daemon),
-        statuses: Mutex::new(statuses),
+        statuses: Mutex::new(HashMap::new()),
         logs: Mutex::new(VecDeque::new()),
     };
 
@@ -68,6 +63,25 @@ pub fn run() {
         .manage(app_state)
         .setup(|app| {
             let state = app.state::<AppState>();
+            let handle = app.handle();
+
+            // Auto-start enabled services
+            let services: Vec<models::ServiceConfig>;
+            let hostname: String;
+            {
+                let config = state.config.lock().unwrap();
+                services = config
+                    .services
+                    .iter()
+                    .filter(|s| s.enabled)
+                    .cloned()
+                    .collect();
+                hostname = config.hostname.clone();
+            }
+            for svc in &services {
+                commands::try_register_service(handle, &state, svc, &hostname);
+            }
+
             let enabled_count = {
                 let statuses = state.statuses.lock().unwrap();
                 statuses
@@ -76,7 +90,7 @@ pub fn run() {
                     .count()
             };
             logging::append_log(
-                app.handle(),
+                handle,
                 &state,
                 LogLevel::Info,
                 format!(
@@ -145,5 +159,8 @@ pub fn run() {
             import_config,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("Error while running tauri application: {}", e);
+            std::process::exit(1);
+        });
 }

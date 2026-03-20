@@ -15,6 +15,16 @@ fn to_mdns_type(service_type: &str) -> String {
     }
 }
 
+fn normalize_hostname(hostname: &str) -> String {
+    if hostname.ends_with(".local.") {
+        hostname.to_string()
+    } else if hostname.ends_with(".local") {
+        format!("{}.", hostname)
+    } else {
+        format!("{}.local.", hostname)
+    }
+}
+
 pub fn register_service(
     daemon: &ServiceDaemon,
     config: &ServiceConfig,
@@ -23,13 +33,7 @@ pub fn register_service(
     let mdns_type = to_mdns_type(&config.service_type);
     let instance_name = &config.name;
 
-    let host = if hostname.ends_with(".local.") {
-        hostname.to_string()
-    } else if hostname.ends_with(".local") {
-        format!("{}.", hostname)
-    } else {
-        format!("{}.local.", hostname)
-    };
+    let host = normalize_hostname(hostname);
 
     let properties: Vec<(&str, &str)> = config
         .txt
@@ -62,13 +66,7 @@ pub fn unregister_service(
 ) -> Result<(), AppError> {
     let mdns_type = to_mdns_type(&config.service_type);
 
-    let host = if hostname.ends_with(".local.") {
-        hostname.to_string()
-    } else if hostname.ends_with(".local") {
-        format!("{}.", hostname)
-    } else {
-        format!("{}.local.", hostname)
-    };
+    let host = normalize_hostname(hostname);
 
     let fullname = format!("{}.{}", config.name, mdns_type);
 
@@ -120,5 +118,20 @@ mod tests {
     #[test]
     fn to_mdns_type_with_trailing_dot() {
         assert_eq!(to_mdns_type("_ssh._tcp."), "_ssh._tcp.local.");
+    }
+
+    #[test]
+    fn normalize_hostname_plain() {
+        assert_eq!(normalize_hostname("myhost"), "myhost.local.");
+    }
+
+    #[test]
+    fn normalize_hostname_with_local() {
+        assert_eq!(normalize_hostname("myhost.local"), "myhost.local.");
+    }
+
+    #[test]
+    fn normalize_hostname_with_local_dot() {
+        assert_eq!(normalize_hostname("myhost.local."), "myhost.local.");
     }
 }
